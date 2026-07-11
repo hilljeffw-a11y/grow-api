@@ -1,0 +1,6 @@
+{
+    "name": "grow-api",
+    "version": "1.0.0",
+    "description": "Grow App Gemini API proxy",
+    "private": true
+}
