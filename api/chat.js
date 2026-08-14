@@ -98,15 +98,16 @@ export default async function handler(req, res) {
         // Abort a bit before maxDuration and return a clean JSON error (with the
         // CORS headers already set above) instead of letting the platform kill
         // the function and return a bare 504 with no CORS headers.
-            const MAX_RETRIES = 2;
-            const RETRY_DELAYS_MS = [500, 1500];
+    const FETCH_TIMEOUT_MS = 20000;
+            const MAX_RETRIES = 1;
+            const RETRY_DELAY_MS = 400;
 
             let geminiRes;
             let lastErrText = '';
 
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 25000);
+                        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
                         try {
                                       geminiRes = await fetch(
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
                                       return res.status(geminiRes.status).json({ error: 'Gemini API error', details: lastErrText });
                         }
 
-                        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+                        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
             }
 
         const data = await geminiRes.json();
