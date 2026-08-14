@@ -98,29 +98,42 @@ export default async function handler(req, res) {
         // Abort a bit before maxDuration and return a clean JSON error (with the
         // CORS headers already set above) instead of letting the platform kill
         // the function and return a bare 504 with no CORS headers.
-        const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000);
+            const MAX_RETRIES = 2;
+            const RETRY_DELAYS_MS = [500, 1500];
 
-        let geminiRes;
-          try {
-                    geminiRes = await fetch(
-                                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-                        {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify(geminiBody),
-                                      signal: controller.signal,
+            let geminiRes;
+            let lastErrText = '';
+
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+                        try {
+                                      geminiRes = await fetch(
+                                                      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+                                            {
+                                                              method: 'POST',
+                                                              headers: { 'Content-Type': 'application/json' },
+                                                              body: JSON.stringify(geminiBody),
+                                                              signal: controller.signal,
+                                            }
+                                                    );
+                        } finally {
+                                      clearTimeout(timeoutId);
                         }
-                              );
-          } finally {
-                    clearTimeout(timeoutId);
-          }
 
-        if (!geminiRes.ok) {
-                  const err = await geminiRes.text();
-                  console.error('Gemini error:', err);
-                  return res.status(geminiRes.status).json({ error: 'Gemini API error', details: err });
-        }
+                        if (geminiRes.ok) break;
+
+                        lastErrText = await geminiRes.text();
+                        console.error(`Gemini error (attempt ${attempt + 1}):`, lastErrText);
+
+                        const isRetryable = geminiRes.status === 503 || geminiRes.status === 429;
+                        if (!isRetryable || attempt === MAX_RETRIES) {
+                                      return res.status(geminiRes.status).json({ error: 'Gemini API error', details: lastErrText });
+                        }
+
+                        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+            }
 
         const data = await geminiRes.json();
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
